@@ -7,42 +7,40 @@ import re
 from collections import Counter
 from wordcloud import WordCloud
 
-# Updated column mapping to prioritize analysis columns
+# Enhanced column mapping with more variations
 COLUMN_MAPPING = {
-    'analysis_timestamp': ['timestamp', 'date', 'time', 'datetime'],
-    'analysis_department': ['department', 'dept', 'division', 'team'],
-    'analysis_job_role': ['job_role', 'role', 'position', 'job', 'job role'],
-    'analysis_ai_tool': ['ai_tool_used', 'ai tool', 'tool', 'ai', 'ai tool used'],
-    'analysis_usage': ['usage_frequency', 'frequency', 'usage', 'how often'],
-    'analysis_purpose': ['purpose', 'use case', 'application', 'used for'],
-    'analysis_ease': ['ease_of_use', 'ease', 'usability', 'ease of use'],
-    'analysis_efficiency': ['time_saved', 'time', 'efficiency', 'time save', 'time saving'],
-    'analysis_feedback': ['improvement_suggestion', 'suggestions', 'feedback', 'comments'],
-    'analysis_suggestion_category': ['suggestion_category']
+    'analysis_timestamp': ['timestamp', 'date', 'time', 'datetime', 'time stamp'],
+    'analysis_department': ['department', 'dept', 'division', 'team', 'group'],
+    'analysis_job_role': ['job_role', 'role', 'position', 'job', 'job role', 'title'],
+    'analysis_ai_tool': ['ai_tool_used', 'ai tool', 'tool', 'ai', 'ai tool used', 'which ai', 'ai system'],
+    'analysis_usage': ['usage_frequency', 'frequency', 'usage', 'how often', 'usage frequency', 'how frequently'],
+    'analysis_purpose': ['purpose', 'use case', 'application', 'used for', 'primary use'],
+    'analysis_ease': ['ease_of_use', 'ease', 'usability', 'ease of use', 'user friendly'],
+    'analysis_efficiency': ['time_saved', 'time', 'efficiency', 'time save', 'time saving', 'productivity'],
+    'analysis_feedback': ['improvement_suggestion', 'suggestions', 'feedback', 'comments', 'recommendations'],
+    'analysis_suggestion_category': ['suggestion_category', 'feedback type', 'category']
 }
 
 def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Updated to prioritize analysis columns"""
-    # First check if analysis columns already exist
-    existing_analysis_cols = [col for col in df.columns if col.startswith('analysis_')]
-    if existing_analysis_cols:
-        return df
-    
-    # If not, proceed with standardization
+    """More robust column standardization"""
+    # Create mapping from all variations to standard names
     variation_map = {}
     for std_name, variations in COLUMN_MAPPING.items():
         for var in variations:
-            norm_var = var.lower().replace(' ', '_')
+            norm_var = var.lower().strip().replace(' ', '_')
             variation_map[norm_var] = std_name
     
-    df.columns = [col.lower().strip().replace(' ', '_') for col in df.columns]
+    # Normalize all input columns
+    norm_columns = [str(col).lower().strip().replace(' ', '_') for col in df.columns]
     
+    # Map to standard names
     new_columns = []
     seen_columns = set()
     
-    for col in df.columns:
-        std_col = variation_map.get(col, col)
+    for i, norm_col in enumerate(norm_columns):
+        std_col = variation_map.get(norm_col, df.columns[i])
         
+        # Handle duplicate columns
         if std_col in seen_columns:
             counter = 2
             new_col = f"{std_col}_{counter}"
@@ -68,39 +66,47 @@ def load_data(uploaded_file) -> pd.DataFrame:
             st.error("Unsupported file format. Please upload a CSV or JSON file.")
             return None
         
+        st.session_state['original_columns'] = df.columns.tolist()
         df = standardize_columns(df)
+        st.session_state['standardized_columns'] = df.columns.tolist()
         return df.loc[:, ~df.columns.duplicated()]
     except Exception as e:
         st.error(f"Error loading data: {str(e)}")
         return None
 
 def plot_usage_frequency(df: pd.DataFrame):
-    """Updated to check both analysis_usage and usage_frequency"""
-    usage_col = None
-    if 'analysis_usage' in df.columns:
-        usage_col = 'analysis_usage'
-    elif 'usage_frequency' in df.columns:
-        usage_col = 'usage_frequency'
+    """Enhanced usage frequency analysis"""
+    usage_col = next((col for col in ['analysis_usage', 'usage_frequency'] if col in df.columns), None)
     
     if not usage_col:
         st.warning("No usage frequency data available")
+        st.write("Available columns:", df.columns.tolist())
         return None
     
+    # Enhanced frequency mapping
     freq_map = {
-        'daily': 'Daily',
-        'weekly': 'Weekly',
-        'monthly': 'Monthly',
-        'rarely': 'Rarely',
-        'never': 'Never'
+        r'daily|every day|each day': 'Daily',
+        r'weekly|every week|each week': 'Weekly',
+        r'monthly|every month|each month': 'Monthly',
+        r'rarely|sometimes|occasionally|seldom': 'Rarely',
+        r'never|not at all|haven\'t used': 'Never',
+        r'often|regularly|frequently': 'Often'
     }
     
-    df[usage_col] = df[usage_col].astype(str).str.lower().map(freq_map).fillna('Other')
+    # Clean and categorize
+    usage_series = df[usage_col].astype(str).str.lower().str.strip()
+    categorized = usage_series.replace(
+        to_replace=list(freq_map.keys()),
+        value=list(freq_map.values()),
+        regex=True
+    ).fillna('Other')
     
+    # Plot
     fig, ax = plt.subplots(figsize=(10, 6))
+    order = ['Daily', 'Often', 'Weekly', 'Monthly', 'Rarely', 'Never', 'Other']
     sns.countplot(
-        data=df,
-        x=usage_col,
-        order=['Daily', 'Weekly', 'Monthly', 'Rarely', 'Never', 'Other'],
+        x=categorized,
+        order=order,
         ax=ax,
         palette='viridis'
     )
@@ -112,18 +118,29 @@ def plot_usage_frequency(df: pd.DataFrame):
     return fig
 
 def plot_tool_popularity(df: pd.DataFrame):
-    """Updated to check both analysis_ai_tool and ai_tool"""
-    tool_col = None
-    if 'analysis_ai_tool' in df.columns:
-        tool_col = 'analysis_ai_tool'
-    elif 'ai_tool' in df.columns:
-        tool_col = 'ai_tool'
+    """Enhanced tool popularity analysis"""
+    tool_col = next((col for col in ['analysis_ai_tool', 'ai_tool'] if col in df.columns), None)
     
     if not tool_col:
         st.warning("No AI tool data available")
+        st.write("Available columns:", df.columns.tolist())
         return None
     
-    df[tool_col] = df[tool_col].str.strip().str.title()
+    # Clean tool names
+    df[tool_col] = (
+        df[tool_col]
+        .astype(str)
+        .str.strip()
+        .str.title()
+        .replace({
+            'Chatgpt': 'ChatGPT',
+            'Gpt-4': 'ChatGPT-4',
+            'Googlebard': 'Google Bard',
+            'Githubcopilot': 'GitHub Copilot'
+        }, regex=False)
+    )
+    
+    # Count and plot
     tool_counts = df[tool_col].value_counts().reset_index()
     tool_counts.columns = ['AI Tool', 'Count']
     
@@ -136,23 +153,15 @@ def plot_tool_popularity(df: pd.DataFrame):
         text='Count'
     )
     fig.update_traces(textposition='outside')
-    fig.update_layout(showlegend=False)
+    fig.update_layout(showlegend=False, xaxis_tickangle=-45)
     return fig
 
 def plot_metrics(df: pd.DataFrame):
+    """Enhanced metrics visualization"""
     figs = []
     
-    # Check for analysis columns first, then fall back to standard
-    ease_col = None
-    if 'analysis_ease' in df.columns:
-        ease_col = 'analysis_ease'
-    else:
-        ease_cols = [col for col in df.columns 
-                    if ('ease_of_use' in col or 'ease' in col) 
-                    and 'timestamp' not in col]
-        if ease_cols:
-            ease_col = ease_cols[0]
-    
+    # Ease of use
+    ease_col = next((col for col in ['analysis_ease', 'ease_of_use'] if col in df.columns), None)
     if ease_col:
         fig1 = plt.figure(figsize=(8, 5))
         sns.boxplot(data=df, y=ease_col, color='skyblue')
@@ -160,16 +169,8 @@ def plot_metrics(df: pd.DataFrame):
         plt.ylabel('Rating (1-5)')
         figs.append(fig1)
     
-    time_col = None
-    if 'analysis_efficiency' in df.columns:
-        time_col = 'analysis_efficiency'
-    else:
-        time_cols = [col for col in df.columns 
-                    if ('time_saved' in col or 'time_saving' in col) 
-                    and 'timestamp' not in col]
-        if time_cols:
-            time_col = time_cols[0]
-    
+    # Time saved
+    time_col = next((col for col in ['analysis_efficiency', 'time_saved'] if col in df.columns), None)
     if time_col:
         fig2 = plt.figure(figsize=(8, 5))
         sns.boxplot(data=df, y=time_col, color='lightgreen')
@@ -180,22 +181,13 @@ def plot_metrics(df: pd.DataFrame):
     return figs if figs else None
 
 def analyze_suggestions(df: pd.DataFrame):
-    """Updated to check both analysis_feedback and suggestions"""
-    feedback_col = None
-    category_col = None
-    
-    if 'analysis_feedback' in df.columns:
-        feedback_col = 'analysis_feedback'
-    elif 'suggestions' in df.columns:
-        feedback_col = 'suggestions'
-    
-    if 'analysis_suggestion_category' in df.columns:
-        category_col = 'analysis_suggestion_category'
-    elif 'suggestion_category' in df.columns:
-        category_col = 'suggestion_category'
+    """Enhanced suggestion analysis"""
+    feedback_col = next((col for col in ['analysis_feedback', 'suggestions'] if col in df.columns), None)
+    category_col = next((col for col in ['analysis_suggestion_category', 'suggestion_category'] if col in df.columns), None)
     
     if not feedback_col:
         st.warning("No suggestions data available")
+        st.write("Available columns:", df.columns.tolist())
         return
     
     suggestions = df[feedback_col].astype(str).dropna()
@@ -207,36 +199,30 @@ def analyze_suggestions(df: pd.DataFrame):
     if category_col and category_col in df.columns:
         category_counts = df[category_col].value_counts(normalize=True) * 100
     else:
-        # Fall back to categorization logic
-        cleaned_suggestions = suggestions.str.lower().str.strip()
-        cleaned_suggestions = cleaned_suggestions.replace(
-            ['none', 'no', 'n/a', 'nothing', 'no suggestion', 'no improvements', 'nan', 'null'],
-            'No suggestions',
-            regex=True
-        )
+        # Enhanced categorization
+        patterns = {
+            'Training/guidance': r'train|guide|tutorial|doc|manual|help|learn|educate',
+            'Feature improvements': r'feature|function|tool|option|capability|improve|enhance|add',
+            'Better integration': r'integrat|connect|api|system|plugin|bridge|import|export',
+            'Cost reduction': r'cost|price|cheap|afford|license|subscription|fee|pay',
+            'Improved accuracy': r'reliable|accurate|quality|precise|correct|better|trust|depend',
+            'No suggestions': r'no|none|n/a|not|nothing|nil|nan|null|undefined'
+        }
         
         categorized = []
-        for suggestion in cleaned_suggestions:
-            try:
-                if suggestion == 'no suggestions':
-                    categorized.append('No suggestions')
-                elif re.search(r'train|guide|tutorial|documentation|help', suggestion):
-                    categorized.append('More training/guidance')
-                elif re.search(r'feature|function|capabilit|improve|enhance', suggestion):
-                    categorized.append('Feature improvements')
-                elif re.search(r'integrat|connect|api|system', suggestion):
-                    categorized.append('Better integration')
-                elif re.search(r'cost|price|license|subscription', suggestion):
-                    categorized.append('Cost reduction')
-                elif re.search(r'reliable|accurate|quality|precise|correct', suggestion):
-                    categorized.append('Improved accuracy/reliability')
-                else:
-                    categorized.append('Other suggestions')
-            except:
+        for suggestion in suggestions.str.lower():
+            matched = False
+            for category, pattern in patterns.items():
+                if re.search(pattern, suggestion):
+                    categorized.append(category)
+                    matched = True
+                    break
+            if not matched:
                 categorized.append('Other suggestions')
         
         category_counts = pd.Series(categorized).value_counts(normalize=True) * 100
     
+    # Visualization
     st.subheader("Suggestions Analysis")
     
     col1, col2 = st.columns(2)
@@ -252,7 +238,7 @@ def analyze_suggestions(df: pd.DataFrame):
     
     with col2:
         try:
-            text = ' '.join(s for s in suggestions.dropna() if isinstance(s, str))
+            text = ' '.join(s for s in suggestions if isinstance(s, str))
             if text.strip():
                 wordcloud = WordCloud(
                     width=800,
@@ -266,20 +252,18 @@ def analyze_suggestions(df: pd.DataFrame):
                 plt.axis('off')
                 plt.title('Common Words in Suggestions')
                 st.pyplot(fig2, use_container_width=True)
-            else:
-                st.warning("No valid text for word cloud generation")
         except Exception as e:
             st.warning(f"Could not generate word cloud: {str(e)}")
     
+    # Top suggestions
     st.subheader("Most Common Suggestions")
     try:
         common_suggestions = Counter(
-            s.capitalize() for s in suggestions.dropna() 
-            if isinstance(s, str) and s.lower() not in ['none', 'no', 'n/a', 'nan']
+            s.strip().capitalize() for s in suggestions 
+            if isinstance(s, str) and len(s.strip()) > 3
         ).most_common(10)
         
         if common_suggestions:
-            st.write("**Top 10 suggestions:**")
             for i, (suggestion, count) in enumerate(common_suggestions, 1):
                 st.write(f"{i}. {suggestion} ({count} responses)")
         else:
@@ -287,7 +271,6 @@ def analyze_suggestions(df: pd.DataFrame):
     except Exception as e:
         st.warning(f"Could not analyze suggestions: {str(e)}")
 
-# Rest of the file remains unchanged...
 def create_dashboard():
     st.set_page_config(
         page_title="AI Tools Usage Analysis",
@@ -312,35 +295,28 @@ def create_dashboard():
             df = load_data(uploaded_file)
         
         if df is not None:
-            st.success("Data loaded successfully!")
+            st.success("✅ Data loaded successfully!")
             
-            # Show column mapping info
-            with st.expander("🔍 Column Mapping Information"):
-                st.write("The system automatically mapped these columns:")
-                mapped_cols = {col: df.columns[df.columns.str.startswith(col)].tolist() 
-                             for col in ['analysis_', 'timestamp', 'department', 'job_role', 
-                                        'ai_tool', 'usage_', 'purpose', 'ease_', 'time_', 'suggestion']}
-                st.json({k: v for k, v in mapped_cols.items() if v})
+            # Debug information (can be collapsed)
+            with st.expander("🔍 Data Debug Info (click to view)"):
+                st.write("Original columns:", st.session_state.get('original_columns', []))
+                st.write("Standardized columns:", st.session_state.get('standardized_columns', []))
+                st.write("Sample data:", df.head(3))
             
-            st.subheader("📋 Data Preview")
+            st.subheader("📋 Data Overview")
             st.dataframe(df.head(), use_container_width=True)
             
             st.subheader("📈 Usage Analysis")
-            
             col1, col2 = st.columns(2)
             with col1:
                 freq_fig = plot_usage_frequency(df)
                 if freq_fig:
                     st.pyplot(freq_fig, use_container_width=True)
-                else:
-                    st.warning("Could not generate usage frequency chart")
             
             with col2:
                 tool_fig = plot_tool_popularity(df)
                 if tool_fig:
                     st.plotly_chart(tool_fig, use_container_width=True)
-                else:
-                    st.warning("Could not generate tool popularity chart")
             
             st.subheader("⭐ User Experience Metrics")
             metric_figs = plot_metrics(df)
@@ -349,19 +325,17 @@ def create_dashboard():
                 for i, fig in enumerate(metric_figs):
                     with cols[i]:
                         st.pyplot(fig, use_container_width=True)
-            else:
-                st.warning("No user experience metrics available")
             
             st.subheader("💡 User Feedback Analysis")
             analyze_suggestions(df)
             
-            # Add download button for analyzed data
+            # Add download button
             st.subheader("💾 Download Analyzed Data")
             csv = df.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="Download analyzed data as CSV",
                 data=csv,
-                file_name="analyzed_ai_usage_data.csv",
+                file_name="ai_usage_analysis.csv",
                 mime="text/csv"
             )
 
