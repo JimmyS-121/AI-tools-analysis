@@ -12,7 +12,7 @@ COLUMN_MAPPING = {
     'timestamp': ['timestamp', 'date', 'time', 'datetime', 'time stamp', 'recorded at'],
     'department': ['department', 'dept', 'division', 'team', 'group', 'business unit'],
     'job_role': ['job_role', 'role', 'position', 'job', 'job role', 'title', 'occupation', 'role:'],
-    'ai_tool': ['ai_tool_used', 'ai tool', 'tool', 'ai', 'ai tool used', 'which ai', 'ai system', 'application used', 'technology used'],
+    'ai_tool': ['ai_tool_used', 'ai tool', 'ai', 'ai tool used', 'which ai', 'ai system', 'application used', 'technology used'],
     'usage_frequency': ['usage_frequency', 'frequency', 'usage', 'how often', 'usage frequency', 'usage of tools', 'how frequently', 'rate of use', 'utilization'],
     'purpose': ['purpose', 'use case', 'application', 'used for', 'primary use', 'main purpose', 'how used', 'purpose of using ai tools'],
     'ease_of_use': ['ease_of_use', 'ease', 'usability', 'ease of use', 'user friendly', 'difficulty', 'how easy'],
