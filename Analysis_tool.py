@@ -136,42 +136,45 @@ def analyze_suggestions(df):
         st.warning("No suggestions data available")
         return None
     
-    # Clean and preprocess suggestions
-    suggestions = df['suggestions'].dropna()
+    # Clean and preprocess suggestions - ensure all values are strings
+    suggestions = df['suggestions'].astype(str).dropna()
     if suggestions.empty:
         st.warning("No suggestions provided in the data")
         return None
     
-    # Basic cleaning
+    # Basic cleaning - handle NaN/None after string conversion
     cleaned_suggestions = suggestions.str.lower().str.strip()
     cleaned_suggestions = cleaned_suggestions.replace(
-        ['none', 'no', 'n/a', 'nothing', 'no suggestion', 'no improvements'], 
+        ['none', 'no', 'n/a', 'nothing', 'no suggestion', 'no improvements', 'nan', 'null'], 
         'No suggestions', 
         regex=True
     )
     
-    # Categorize suggestions into broad groups
+    # Categorize suggestions into broad groups with error handling
     categorized = []
     for suggestion in cleaned_suggestions:
-        if suggestion == 'no suggestions':
-            categorized.append('No suggestions')
-        elif re.search(r'train|guide|tutorial|documentation|help', suggestion):
-            categorized.append('More training/guidance')
-        elif re.search(r'feature|function|capabilit|improve|enhance', suggestion):
-            categorized.append('Feature improvements')
-        elif re.search(r'integrat|connect|api|system', suggestion):
-            categorized.append('Better integration')
-        elif re.search(r'cost|price|license|subscription', suggestion):
-            categorized.append('Cost reduction')
-        elif re.search(r'reliable|accurate|quality|precise|correct', suggestion):
-            categorized.append('Improved accuracy/reliability')
-        else:
+        try:
+            if suggestion == 'no suggestions':
+                categorized.append('No suggestions')
+            elif isinstance(suggestion, str) and re.search(r'train|guide|tutorial|documentation|help', suggestion):
+                categorized.append('More training/guidance')
+            elif isinstance(suggestion, str) and re.search(r'feature|function|capabilit|improve|enhance', suggestion):
+                categorized.append('Feature improvements')
+            elif isinstance(suggestion, str) and re.search(r'integrat|connect|api|system', suggestion):
+                categorized.append('Better integration')
+            elif isinstance(suggestion, str) and re.search(r'cost|price|license|subscription', suggestion):
+                categorized.append('Cost reduction')
+            elif isinstance(suggestion, str) and re.search(r'reliable|accurate|quality|precise|correct', suggestion):
+                categorized.append('Improved accuracy/reliability')
+            else:
+                categorized.append('Other suggestions')
+        except:
             categorized.append('Other suggestions')
     
     # Count categories
     category_counts = pd.Series(categorized).value_counts(normalize=True) * 100
     
-    # Create two visualizations
+    # Create visualizations
     st.subheader("Suggestions Analysis")
     
     # Pie chart for categories
@@ -188,21 +191,30 @@ def analyze_suggestions(df):
     # Word cloud for raw suggestions
     with col2:
         try:
-            text = ' '.join(suggestions.dropna())
-            wordcloud = WordCloud(width=600, height=400, background_color='white').generate(text)
-            fig2, ax = plt.subplots(figsize=(10, 6))
-            ax.imshow(wordcloud, interpolation='bilinear')
-            ax.axis('off')
-            ax.set_title('Common Words in Suggestions')
-            st.pyplot(fig2)
-        except:
-            st.warning("Could not generate word cloud")
+            text = ' '.join(s for s in suggestions.dropna() if isinstance(s, str))
+            if text.strip():  # Only generate if we have text
+                wordcloud = WordCloud(width=600, height=400, background_color='white').generate(text)
+                fig2, ax = plt.subplots(figsize=(10, 6))
+                ax.imshow(wordcloud, interpolation='bilinear')
+                ax.axis('off')
+                ax.set_title('Common Words in Suggestions')
+                st.pyplot(fig2)
+            else:
+                st.warning("No valid text for word cloud generation")
+        except Exception as e:
+            st.warning(f"Could not generate word cloud: {str(e)}")
     
     # Display most common raw suggestions
     st.subheader("Most Common Suggestions")
-    common_suggestions = Counter(suggestions.dropna().str.capitalize()).most_common(10)
-    for suggestion, count in common_suggestions:
-        st.write(f"- {suggestion} ({count} responses)")
+    try:
+        common_suggestions = Counter(s.capitalize() for s in suggestions.dropna() if isinstance(s, str)).most_common(10)
+        if common_suggestions:
+            for suggestion, count in common_suggestions:
+                st.write(f"- {suggestion} ({count} responses)")
+        else:
+            st.write("No suggestions available")
+    except Exception as e:
+        st.warning(f"Could not analyze suggestions: {str(e)}")
 
 def create_dashboard():
     st.set_page_config(page_title="AI Tools Usage Analysis", layout="wide")
