@@ -288,3 +288,82 @@ def analyze_suggestions(df: pd.DataFrame):
         st.warning(f"Could not analyze suggestions: {str(e)}")
 
 # Rest of the file remains unchanged...
+def create_dashboard():
+    st.set_page_config(
+        page_title="AI Tools Usage Analysis",
+        layout="wide",
+        page_icon="🤖"
+    )
+    
+    st.title("📊 AI Tools Usage Analysis Dashboard")
+    st.markdown("""
+    This tool helps analyze how AI tools are being used within your organization.
+    Upload your data file to get started.
+    """)
+    
+    uploaded_file = st.file_uploader(
+        "Upload your data (CSV or JSON)",
+        type=['csv', 'json'],
+        accept_multiple_files=False
+    )
+    
+    if uploaded_file is not None:
+        with st.spinner('Analyzing data...'):
+            df = load_data(uploaded_file)
+        
+        if df is not None:
+            st.success("Data loaded successfully!")
+            
+            # Show column mapping info
+            with st.expander("🔍 Column Mapping Information"):
+                st.write("The system automatically mapped these columns:")
+                mapped_cols = {col: df.columns[df.columns.str.startswith(col)].tolist() 
+                             for col in ['analysis_', 'timestamp', 'department', 'job_role', 
+                                        'ai_tool', 'usage_', 'purpose', 'ease_', 'time_', 'suggestion']}
+                st.json({k: v for k, v in mapped_cols.items() if v})
+            
+            st.subheader("📋 Data Preview")
+            st.dataframe(df.head(), use_container_width=True)
+            
+            st.subheader("📈 Usage Analysis")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                freq_fig = plot_usage_frequency(df)
+                if freq_fig:
+                    st.pyplot(freq_fig, use_container_width=True)
+                else:
+                    st.warning("Could not generate usage frequency chart")
+            
+            with col2:
+                tool_fig = plot_tool_popularity(df)
+                if tool_fig:
+                    st.plotly_chart(tool_fig, use_container_width=True)
+                else:
+                    st.warning("Could not generate tool popularity chart")
+            
+            st.subheader("⭐ User Experience Metrics")
+            metric_figs = plot_metrics(df)
+            if metric_figs:
+                cols = st.columns(len(metric_figs))
+                for i, fig in enumerate(metric_figs):
+                    with cols[i]:
+                        st.pyplot(fig, use_container_width=True)
+            else:
+                st.warning("No user experience metrics available")
+            
+            st.subheader("💡 User Feedback Analysis")
+            analyze_suggestions(df)
+            
+            # Add download button for analyzed data
+            st.subheader("💾 Download Analyzed Data")
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="Download analyzed data as CSV",
+                data=csv,
+                file_name="analyzed_ai_usage_data.csv",
+                mime="text/csv"
+            )
+
+if __name__ == '__main__':
+    create_dashboard()
