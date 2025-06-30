@@ -5,74 +5,46 @@ import plotly.express as px
 import streamlit as st
 import re
 from collections import Counter
-from wordcloud import WordCloud
 
-# Ultra-comprehensive column mapping
+# Enhanced column mapping
 COLUMN_MAPPING = {
-    'timestamp': ['timestamp', 'date', 'time', 'datetime', 'time stamp', 'recorded at'],
-    'department': ['department', 'dept', 'division', 'team', 'group', 'business unit'],
-    'job_role': ['job_role', 'role', 'position', 'job', 'job role', 'title', 'occupation', 'role:'],
-    'ai_tool': ['ai_tool_used', 'ai tool', 'ai', 'ai tool used', 'which ai', 'ai system', 'application used', 'technology used'],
-    'usage_frequency': ['usage_frequency', 'frequency', 'usage', 'how often', 'usage frequency', 'usage of tools', 'how frequently', 'rate of use', 'utilization'],
-    'purpose': ['purpose', 'use case', 'application', 'used for', 'primary use', 'main purpose', 'how used', 'purpose of using ai tools'],
-    'ease_of_use': ['ease_of_use', 'ease', 'usability', 'ease of use', 'user friendly', 'difficulty', 'how easy'],
-    'time_saved': ['time_saved', 'time', 'efficiency', 'time save', 'time saving', 'productivity', 'hours saved'],
-    'suggestions': ['improvement_suggestion', 'suggestions', 'feedback', 'comments', 'recommendations', 'ideas']
+    'timestamp': ['timestamp', 'date', 'time', 'datetime'],
+    'department': ['department', 'dept', 'division', 'team', 'which department'],
+    'job_role': ['job_role', 'role', 'position', 'job', 'job role', 'role:'],
+    'ai_tool': ['ai_tool', 'what ai tool', 'ai tool used', 'tool', 'ai'],
+    'usage_frequency': ['usage_frequency', 'usage of ai tools', 'frequency', 'usage', 'how often'],
+    'purpose': ['purpose', 'purpose of using ai tools', 'use case', 'application', 'used for'],
+    'ease_of_use': ['ease_of_use', 'ease', 'usability', 'ease of use'],
+    'efficiency': ['efficiency', 'how efficiency', 'time_saved', 'time save', 'time saving'],
+    'suggestions': ['suggestions', 'improvement', 'feedback', 'comments', 'any suggestions']
 }
 
-def debug_columns(df, context=""):
-    """Helper function to display column debug info"""
-    st.write(f"🔍 {context} - First 3 rows:")
-    st.write(df.head(3))
-    st.write("📋 All columns:", df.columns.tolist())
-
 def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Bulletproof column standardization"""
-    original_columns = df.columns.tolist()
+    """More robust column standardization"""
+    column_mapping = {}
     
-    # Create case-insensitive mapping
-    variation_map = {}
-    for std_name, variations in COLUMN_MAPPING.items():
-        for var in variations:
-            norm_var = re.sub(r'[^a-z0-9]', '', var.lower())
-            variation_map[norm_var] = std_name
-    
-    # Normalize all input columns
-    new_columns = []
-    seen_columns = set()
-    
-    for orig_col in df.columns:
-        # Create normalized version for matching
-        norm_col = re.sub(r'[^a-z0-9]', '', str(orig_col).lower())
-        
-        # Find best match (allowing partial matches)
+    for original_col in df.columns:
+        original_lower = str(original_col).lower().strip()
         matched = False
-        for pattern, std_col in variation_map.items():
-            if re.search(pattern, norm_col):
-                # Handle duplicates
-                if std_col in seen_columns:
-                    counter = 2
-                    new_col = f"{std_col}_{counter}"
-                    while new_col in seen_columns:
-                        counter += 1
-                        new_col = f"{std_col}_{counter}"
-                else:
-                    new_col = std_col
-                
-                new_columns.append(new_col)
-                seen_columns.add(new_col)
-                matched = True
+        
+        for std_col, variations in COLUMN_MAPPING.items():
+            for variation in variations:
+                if variation.lower() in original_lower:
+                    column_mapping[original_col] = std_col
+                    matched = True
+                    break
+            if matched:
                 break
         
         if not matched:
-            new_columns.append(orig_col)
+            column_mapping[original_col] = original_col
     
-    df.columns = new_columns
-    st.session_state['column_mapping'] = dict(zip(original_columns, new_columns))
-    return df
+    # Apply mapping and drop duplicates
+    df = df.rename(columns=column_mapping)
+    return df.loc[:, ~df.columns.duplicated()]
 
 def load_data(uploaded_file) -> pd.DataFrame:
-    """Robust data loader with detailed error handling"""
+    """Robust data loader with enhanced column handling"""
     try:
         if uploaded_file.name.endswith('.csv'):
             df = pd.read_csv(uploaded_file)
@@ -88,16 +60,12 @@ def load_data(uploaded_file) -> pd.DataFrame:
             st.error("Uploaded file is empty")
             return None
         
-        # Initial debug info
-        st.session_state['raw_data_sample'] = df.head(3).to_dict('records')
-        st.session_state['raw_columns'] = df.columns.tolist()
-        
         # Standardize columns
         df = standardize_columns(df)
         
-        # Post-standardization debug info
-        st.session_state['processed_data_sample'] = df.head(3).to_dict('records')
+        # Store debug info
         st.session_state['processed_columns'] = df.columns.tolist()
+        st.session_state['processed_data_sample'] = df.head(3).to_dict('records')
         
         return df
     
@@ -106,75 +74,38 @@ def load_data(uploaded_file) -> pd.DataFrame:
         return None
 
 def plot_usage_frequency(df: pd.DataFrame):
-    """Foolproof usage frequency analysis"""
-    # Try all possible column names
-    possible_cols = [
-        col for col in df.columns 
-        if any(keyword in col.lower() 
-              for keyword in ['usage', 'freq', 'often', 'utiliz'])
-    ]
-    
-    if not possible_cols:
-        st.error("""
-        No usage frequency column found. I looked for columns containing:
-        'usage', 'frequency', 'often', or 'utilization'
-        
-        Available columns:
-        """ + str(df.columns.tolist()))
+    """Enhanced usage frequency visualization"""
+    if 'usage_frequency' not in df.columns:
+        st.error("Usage frequency column not found in data")
         return None
     
-    usage_col = possible_cols[0]  # Use the first match
-    
-    # Enhanced cleaning
+    # Clean frequency data
     freq_map = {
-        r'daily|every day|each day': 'Daily',
-        r'weekly|every week|each week': 'Weekly',
-        r'monthly|every month|each month': 'Monthly',
-        r'rarely|sometimes|occasionally|seldom': 'Rarely',
-        r'never|not at all|haven\'t used': 'Never',
-        r'often|regularly|frequently': 'Often',
-        r'^1$|once': 'Once',
-        r'^2$|twice': 'Twice',
-        r'^3$|thrice': 'Thrice'
+        r'daily': 'Daily',
+        r'weekly': 'Weekly',
+        r'monthly': 'Monthly',
+        r'rarely': 'Rarely',
+        r'never': 'Never',
+        r'^no': 'Never',
+        r'^yes': 'Regularly'
     }
     
-    # Clean and categorize
-    usage_data = df[usage_col].astype(str).str.lower().str.strip()
-    categorized = usage_data.replace(freq_map, regex=True)
-    
-    # Handle numeric frequencies (1-7 times per week)
-    if usage_data.str.isnumeric().any():
-        num_data = pd.to_numeric(usage_data, errors='coerce')
-        categorized = categorized.where(
-            num_data.isna(),
-            num_data.apply(lambda x: f"{int(x)} times" if not pd.isna(x) else 'Other')
-        )
-    
-    # Final cleanup
-    categorized = categorized.fillna('Unknown').replace('', 'Unknown')
+    usage_data = df['usage_frequency'].astype(str).str.lower().str.strip()
+    for pattern, replacement in freq_map.items():
+        usage_data = usage_data.str.replace(pattern, replacement, regex=True)
     
     # Plot
     fig, ax = plt.subplots(figsize=(10, 6))
-    order = ['Daily', 'Often', 'Weekly', 'Monthly', 'Rarely', 'Never', 
-             'Once', 'Twice', 'Thrice', 'Unknown', 'Other']
+    order = ['Daily', 'Weekly', 'Monthly', 'Rarely', 'Never']
     
-    # Get counts for each category
-    counts = categorized.value_counts().reindex(order, fill_value=0)
+    counts = usage_data.value_counts().reindex(order, fill_value=0)
+    sns.barplot(x=counts.index, y=counts.values, ax=ax, palette='viridis', order=order)
     
-    sns.barplot(
-        x=counts.index,
-        y=counts.values,
-        ax=ax,
-        palette='viridis',
-        order=order
-    )
-    
-    ax.set_title(f'Usage Frequency ({usage_col})')
+    ax.set_title('AI Tools Usage Frequency')
     ax.set_xlabel('Frequency')
     ax.set_ylabel('Count')
     plt.xticks(rotation=45)
     
-    # Add counts on top of bars
     for p in ax.patches:
         ax.annotate(f"{int(p.get_height())}", 
                    (p.get_x() + p.get_width() / 2., p.get_height()),
@@ -184,61 +115,36 @@ def plot_usage_frequency(df: pd.DataFrame):
     return fig
 
 def plot_tool_popularity(df: pd.DataFrame):
-    """Bulletproof tool popularity analysis"""
-    # Find AI tool column
-    possible_cols = [
-        col for col in df.columns 
-        if any(keyword in col.lower() 
-              for keyword in ['tool', 'ai', 'application', 'system', 'tech'])
-    ]
-    
-    if not possible_cols:
-        st.error("""
-        No AI tool column found. I looked for columns containing:
-        'tool', 'ai', 'application', 'system', or 'technology'
-        
-        Available columns:
-        """ + str(df.columns.tolist()))
+    """Enhanced tool popularity visualization"""
+    if 'ai_tool' not in df.columns:
+        st.error("AI tool column not found in data")
         return None
     
-    tool_col = possible_cols[0]
+    # Clean tool names
+    tool_map = {
+        r'chat.?gpt': 'ChatGPT',
+        r'poe': 'Poe',
+        r'canva': 'Canva',
+        r'gamma': 'Gamma',
+        r'mid.?journey': 'Midjourney',
+        r'copilot': 'Copilot',
+        r'kling.?ai': 'Kling AI',
+        r'deep.?seek': 'Deepseek'
+    }
     
-    # Enhanced cleaning
-    tool_data = (
-        df[tool_col]
-        .astype(str)
-        .str.strip()
-        .str.title()
-        .replace({
-            'Chatgpt': 'ChatGPT',
-            'Gpt': 'ChatGPT',
-            'Gpt-3': 'ChatGPT-3',
-            'Gpt-4': 'ChatGPT-4',
-            'Googlebard': 'Google Bard',
-            'Bard': 'Google Bard',
-            'Gemini': 'Google Gemini',
-            'Githubcopilot': 'GitHub Copilot',
-            'Copilot': 'GitHub Copilot',
-            'Midjourney': 'Midjourney',
-            'Dalle': 'DALL-E',
-            'Claude': 'Anthropic Claude'
-        }, regex=False)
-        .replace(r'^None$|^Nan$|^Null$', 'Unknown', regex=True)
-    )
+    tool_data = df['ai_tool'].astype(str).str.strip().str.lower()
+    for pattern, replacement in tool_map.items():
+        tool_data = tool_data.str.replace(pattern, replacement, regex=True)
     
     # Count and plot
     tool_counts = tool_data.value_counts().reset_index()
     tool_counts.columns = ['AI Tool', 'Count']
     
-    # Limit to top 20 tools if many
-    if len(tool_counts) > 20:
-        tool_counts = tool_counts.head(20)
-    
     fig = px.bar(
         tool_counts,
         x='AI Tool',
         y='Count',
-        title=f'AI Tool Popularity ({tool_col})',
+        title='AI Tool Popularity',
         color='AI Tool',
         text='Count'
     )
@@ -258,15 +164,11 @@ def create_dashboard():
     )
     
     st.title("📊 AI Tools Usage Analysis Dashboard")
-    st.markdown("""
-    This tool analyzes AI tool usage within your organization.
-    Upload your data file to get started.
-    """)
+    st.markdown("Analyze AI tool usage within your organization")
     
     uploaded_file = st.file_uploader(
         "Upload your data (CSV, Excel, or JSON)",
-        type=['csv', 'xlsx', 'xls', 'json'],
-        accept_multiple_files=False
+        type=['csv', 'xlsx', 'xls', 'json']
     )
     
     if uploaded_file is not None:
@@ -276,45 +178,35 @@ def create_dashboard():
         if df is not None:
             st.success("✅ Data loaded successfully!")
             
-            # Debug information
-            with st.expander("🔍 Data Debug Info (click to view)"):
-                st.write("### Original Columns:")
-                st.write(st.session_state.get('raw_columns', []))
-                
+            with st.expander("🔍 Data Debug Info"):
                 st.write("### Processed Columns:")
                 st.write(st.session_state.get('processed_columns', []))
                 
-                st.write("### Column Mapping:")
-                st.write(st.session_state.get('column_mapping', {}))
-                
-                st.write("### Raw Data Sample:")
-                st.write(st.session_state.get('raw_data_sample', {}))
-                
-                st.write("### Processed Data Sample:")
+                st.write("### Data Sample:")
                 st.write(st.session_state.get('processed_data_sample', {}))
             
             st.subheader("📋 Data Overview")
-            st.dataframe(df.head(), use_container_width=True)
+            st.dataframe(df.head())
             
             st.subheader("📈 Usage Analysis")
             col1, col2 = st.columns(2)
+            
             with col1:
                 freq_fig = plot_usage_frequency(df)
                 if freq_fig:
-                    st.pyplot(freq_fig, use_container_width=True)
+                    st.pyplot(freq_fig)
             
             with col2:
                 tool_fig = plot_tool_popularity(df)
                 if tool_fig:
-                    st.plotly_chart(tool_fig, use_container_width=True)
+                    st.plotly_chart(tool_fig)
             
-            # Add download button
             st.subheader("💾 Download Processed Data")
             csv = df.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="Download processed data as CSV",
+                label="Download CSV",
                 data=csv,
-                file_name="processed_ai_usage_data.csv",
+                file_name="ai_usage_analysis.csv",
                 mime="text/csv"
             )
 
