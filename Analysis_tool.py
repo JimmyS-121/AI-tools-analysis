@@ -130,6 +130,80 @@ def plot_metrics(df):
     
     return figs if figs else None
 
+def analyze_suggestions(df):
+    """Analyze and visualize suggestions data"""
+    if 'suggestions' not in df.columns:
+        st.warning("No suggestions data available")
+        return None
+    
+    # Clean and preprocess suggestions
+    suggestions = df['suggestions'].dropna()
+    if suggestions.empty:
+        st.warning("No suggestions provided in the data")
+        return None
+    
+    # Basic cleaning
+    cleaned_suggestions = suggestions.str.lower().str.strip()
+    cleaned_suggestions = cleaned_suggestions.replace(
+        ['none', 'no', 'n/a', 'nothing', 'no suggestion', 'no improvements'], 
+        'No suggestions', 
+        regex=True
+    )
+    
+    # Categorize suggestions into broad groups
+    categorized = []
+    for suggestion in cleaned_suggestions:
+        if suggestion == 'no suggestions':
+            categorized.append('No suggestions')
+        elif re.search(r'train|guide|tutorial|documentation|help', suggestion):
+            categorized.append('More training/guidance')
+        elif re.search(r'feature|function|capabilit|improve|enhance', suggestion):
+            categorized.append('Feature improvements')
+        elif re.search(r'integrat|connect|api|system', suggestion):
+            categorized.append('Better integration')
+        elif re.search(r'cost|price|license|subscription', suggestion):
+            categorized.append('Cost reduction')
+        elif re.search(r'reliable|accurate|quality|precise|correct', suggestion):
+            categorized.append('Improved accuracy/reliability')
+        else:
+            categorized.append('Other suggestions')
+    
+    # Count categories
+    category_counts = pd.Series(categorized).value_counts(normalize=True) * 100
+    
+    # Create two visualizations
+    st.subheader("Suggestions Analysis")
+    
+    # Pie chart for categories
+    col1, col2 = st.columns(2)
+    with col1:
+        if not category_counts.empty:
+            fig1 = px.pie(
+                values=category_counts.values,
+                names=category_counts.index,
+                title='Suggestion Categories Distribution'
+            )
+            st.plotly_chart(fig1)
+    
+    # Word cloud for raw suggestions
+    with col2:
+        try:
+            text = ' '.join(suggestions.dropna())
+            wordcloud = WordCloud(width=600, height=400, background_color='white').generate(text)
+            fig2, ax = plt.subplots(figsize=(10, 6))
+            ax.imshow(wordcloud, interpolation='bilinear')
+            ax.axis('off')
+            ax.set_title('Common Words in Suggestions')
+            st.pyplot(fig2)
+        except:
+            st.warning("Could not generate word cloud")
+    
+    # Display most common raw suggestions
+    st.subheader("Most Common Suggestions")
+    common_suggestions = Counter(suggestions.dropna().str.capitalize()).most_common(10)
+    for suggestion, count in common_suggestions:
+        st.write(f"- {suggestion} ({count} responses)")
+
 def create_dashboard():
     st.set_page_config(page_title="AI Tools Usage Analysis", layout="wide")
     st.title("AI Tools Usage Analysis Dashboard")
@@ -163,6 +237,9 @@ def create_dashboard():
                 for i, fig in enumerate(metric_figs):
                     with cols[i]:
                         st.pyplot(fig)
+            
+            # Add suggestions analysis
+            analyze_suggestions(df)
 
 if __name__ == '__main__':
     create_dashboard()
