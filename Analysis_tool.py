@@ -1,214 +1,139 @@
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import plotly.express as px
-import streamlit as st
 import re
-from collections import Counter
+from typing import Dict
 
-# Enhanced column mapping
-COLUMN_MAPPING = {
-    'timestamp': ['timestamp', 'date', 'time', 'datetime'],
-    'department': ['department', 'dept', 'division', 'team', 'which department'],
-    'job_role': ['job_role', 'role', 'position', 'job', 'job role', 'role:'],
-    'ai_tool': ['ai_tool', 'what ai tool', 'ai tool used', 'tool', 'ai'],
-    'usage_frequency': ['usage_frequency', 'usage of ai tools', 'frequency', 'usage', 'how often'],
-    'purpose': ['purpose', 'purpose of using ai tools', 'use case', 'application', 'used for'],
-    'ease_of_use': ['ease_of_use', 'ease', 'usability', 'ease of use'],
-    'efficiency': ['efficiency', 'how efficiency', 'time_saved', 'time save', 'time saving'],
-    'suggestions': ['suggestions', 'improvement', 'feedback', 'comments', 'any suggestions']
-}
+class DataCleaner:
+    def __init__(self):
+        # Target column mapping (exact mapping to desired output)
+        self.target_columns = {
+            'timestamp': ['timestamp', 'date', 'time', 'datetime'],
+            'department': ['department', 'dept', 'which department'],
+            'job_role': ['job_role', 'role', 'position'],
+            'ai_tool': ['ai_tool', 'what ai tool', 'ai tool used'],
+            'usage_frequency': ['usage_frequency', 'usage of ai tools'],
+            'purpose': ['purpose', 'purpose of using ai tools'],
+            'ease_of_use': ['ease_of_use', 'ease of use'],
+            'efficiency': ['efficiency', 'how efficiency'],
+            'suggestions': ['suggestions', 'any suggestions']
+        }
+        
+        # Standardization rules for values
+        self.standardization_rules = {
+            'ai_tool': {
+                'chatgpt': 'ChatGPT',
+                'poe': 'Poe',
+                'canava': 'Canva',
+                'gamma': 'Gamma',
+                'midjourney': 'Midjourney',
+                'copilot': 'Copilot',
+                'kling ai': 'Kling AI',
+                'deepseek': 'Deepseek'
+            },
+            'usage_frequency': {
+                'weekly': 'Weekly',
+                'monthly': 'Monthly',
+                'daily': 'Daily',
+                'rarely': 'Rarely'
+            }
+        }
 
-def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """More robust column standardization"""
-    column_mapping = {}
-    
-    for original_col in df.columns:
-        original_lower = str(original_col).lower().strip()
-        matched = False
-        
-        for std_col, variations in COLUMN_MAPPING.items():
-            for variation in variations:
-                if variation.lower() in original_lower:
-                    column_mapping[original_col] = std_col
-                    matched = True
-                    break
-            if matched:
-                break
-        
-        if not matched:
-            column_mapping[original_col] = original_col
-    
-    # Apply mapping and drop duplicates
-    df = df.rename(columns=column_mapping)
-    return df.loc[:, ~df.columns.duplicated()]
+    def load_data(self, file_path: str) -> pd.DataFrame:
+        """Load data from CSV file"""
+        try:
+            df = pd.read_csv(file_path)
+            if df.empty:
+                raise ValueError("Empty file uploaded")
+            return df
+        except Exception as e:
+            raise ValueError(f"Error loading file: {str(e)}")
 
-def load_data(uploaded_file) -> pd.DataFrame:
-    """Robust data loader with enhanced column handling"""
-    try:
-        if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
-        elif uploaded_file.name.endswith(('.xls', '.xlsx')):
-            df = pd.read_excel(uploaded_file)
-        elif uploaded_file.name.endswith('.json'):
-            df = pd.read_json(uploaded_file)
-        else:
-            st.error("Unsupported file format. Please upload CSV, Excel, or JSON.")
-            return None
-        
+    def clean_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Clean and standardize the dataframe"""
         if df.empty:
-            st.error("Uploaded file is empty")
-            return None
+            raise ValueError("Empty dataframe provided")
         
-        # Standardize columns
-        df = standardize_columns(df)
+        # Step 1: Standardize column names
+        df = self._standardize_column_names(df)
         
-        # Store debug info
-        st.session_state['processed_columns'] = df.columns.tolist()
-        st.session_state['processed_data_sample'] = df.head(3).to_dict('records')
+        # Step 2: Clean each column
+        for col in df.columns:
+            if col in self.standardization_rules:
+                df[col] = self._standardize_values(df[col], col)
+        
+        # Step 3: Ensure proper data types
+        if 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+        
+        if 'ease_of_use' in df.columns:
+            df['ease_of_use'] = pd.to_numeric(df['ease_of_use'], errors='coerce')
+        
+        if 'efficiency' in df.columns:
+            df['efficiency'] = pd.to_numeric(df['efficiency'], errors='coerce')
         
         return df
-    
-    except Exception as e:
-        st.error(f"Error loading file: {str(e)}")
-        return None
 
-def plot_usage_frequency(df: pd.DataFrame):
-    """Enhanced usage frequency visualization"""
-    if 'usage_frequency' not in df.columns:
-        st.error("Usage frequency column not found in data")
-        return None
-    
-    # Clean frequency data
-    freq_map = {
-        r'daily': 'Daily',
-        r'weekly': 'Weekly',
-        r'monthly': 'Monthly',
-        r'rarely': 'Rarely',
-        r'never': 'Never',
-        r'^no': 'Never',
-        r'^yes': 'Regularly'
-    }
-    
-    usage_data = df['usage_frequency'].astype(str).str.lower().str.strip()
-    for pattern, replacement in freq_map.items():
-        usage_data = usage_data.str.replace(pattern, replacement, regex=True)
-    
-    # Plot
-    fig, ax = plt.subplots(figsize=(10, 6))
-    order = ['Daily', 'Weekly', 'Monthly', 'Rarely', 'Never']
-    
-    counts = usage_data.value_counts().reindex(order, fill_value=0)
-    sns.barplot(x=counts.index, y=counts.values, ax=ax, palette='viridis', order=order)
-    
-    ax.set_title('AI Tools Usage Frequency')
-    ax.set_xlabel('Frequency')
-    ax.set_ylabel('Count')
-    plt.xticks(rotation=45)
-    
-    for p in ax.patches:
-        ax.annotate(f"{int(p.get_height())}", 
-                   (p.get_x() + p.get_width() / 2., p.get_height()),
-                   ha='center', va='center', xytext=(0, 5), textcoords='offset points')
-    
-    plt.tight_layout()
-    return fig
-
-def plot_tool_popularity(df: pd.DataFrame):
-    """Enhanced tool popularity visualization"""
-    if 'ai_tool' not in df.columns:
-        st.error("AI tool column not found in data")
-        return None
-    
-    # Clean tool names
-    tool_map = {
-        r'chat.?gpt': 'ChatGPT',
-        r'poe': 'Poe',
-        r'canva': 'Canva',
-        r'gamma': 'Gamma',
-        r'mid.?journey': 'Midjourney',
-        r'copilot': 'Copilot',
-        r'kling.?ai': 'Kling AI',
-        r'deep.?seek': 'Deepseek'
-    }
-    
-    tool_data = df['ai_tool'].astype(str).str.strip().str.lower()
-    for pattern, replacement in tool_map.items():
-        tool_data = tool_data.str.replace(pattern, replacement, regex=True)
-    
-    # Count and plot
-    tool_counts = tool_data.value_counts().reset_index()
-    tool_counts.columns = ['AI Tool', 'Count']
-    
-    fig = px.bar(
-        tool_counts,
-        x='AI Tool',
-        y='Count',
-        title='AI Tool Popularity',
-        color='AI Tool',
-        text='Count'
-    )
-    fig.update_traces(textposition='outside')
-    fig.update_layout(
-        showlegend=False,
-        xaxis_tickangle=-45,
-        height=600
-    )
-    return fig
-
-def create_dashboard():
-    st.set_page_config(
-        page_title="AI Tools Usage Analysis",
-        layout="wide",
-        page_icon="🤖"
-    )
-    
-    st.title("📊 AI Tools Usage Analysis Dashboard")
-    st.markdown("Analyze AI tool usage within your organization")
-    
-    uploaded_file = st.file_uploader(
-        "Upload your data (CSV, Excel, or JSON)",
-        type=['csv', 'xlsx', 'xls', 'json']
-    )
-    
-    if uploaded_file is not None:
-        with st.spinner('Analyzing data...'):
-            df = load_data(uploaded_file)
+    def _standardize_column_names(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Convert input columns to target column names"""
+        column_mapping = {}
         
-        if df is not None:
-            st.success("✅ Data loaded successfully!")
+        for col in df.columns:
+            col_lower = str(col).lower().strip()
+            matched = False
             
-            with st.expander("🔍 Data Debug Info"):
-                st.write("### Processed Columns:")
-                st.write(st.session_state.get('processed_columns', []))
-                
-                st.write("### Data Sample:")
-                st.write(st.session_state.get('processed_data_sample', {}))
+            # Check for exact matches first
+            for target_col, variations in self.target_columns.items():
+                if col_lower in [v.lower() for v in variations]:
+                    column_mapping[col] = target_col
+                    matched = True
+                    break
             
-            st.subheader("📋 Data Overview")
-            st.dataframe(df.head())
+            # If no exact match, check for partial matches
+            if not matched:
+                for target_col, variations in self.target_columns.items():
+                    for variation in variations:
+                        if variation.lower() in col_lower:
+                            column_mapping[col] = target_col
+                            matched = True
+                            break
+                    if matched:
+                        break
             
-            st.subheader("📈 Usage Analysis")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                freq_fig = plot_usage_frequency(df)
-                if freq_fig:
-                    st.pyplot(freq_fig)
-            
-            with col2:
-                tool_fig = plot_tool_popularity(df)
-                if tool_fig:
-                    st.plotly_chart(tool_fig)
-            
-            st.subheader("💾 Download Processed Data")
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="Download CSV",
-                data=csv,
-                file_name="ai_usage_analysis.csv",
-                mime="text/csv"
-            )
+            # If still no match, keep original column
+            if not matched:
+                column_mapping[col] = col
+        
+        return df.rename(columns=column_mapping)
+
+    def _standardize_values(self, series: pd.Series, column: str) -> pd.Series:
+        """Standardize values in a column"""
+        if column not in self.standardization_rules:
+            return series
+        
+        # Convert to string and clean
+        cleaned = series.astype(str).str.strip().str.lower()
+        
+        # Apply standardization rules
+        rules = self.standardization_rules[column]
+        for original, standardized in rules.items():
+            cleaned = cleaned.str.replace(original, standardized, regex=False)
+        
+        return cleaned.str.title()
+
+    def save_cleaned_data(self, df: pd.DataFrame, output_path: str):
+        """Save cleaned data to CSV"""
+        cleaned_df = self.clean_data(df)
+        cleaned_df.to_csv(output_path, index=False, encoding='utf-8-sig')
+
 
 if __name__ == '__main__':
-    create_dashboard()
+    cleaner = DataCleaner()
+    try:
+        # Example usage:
+        input_file = "Testing use (Responses) - Form responses 1.csv"
+        output_file = "cleaned_questionnaire.csv"
+        
+        raw_data = cleaner.load_data(input_file)
+        cleaner.save_cleaned_data(raw_data, output_file)
+        print(f"Success! Cleaned data saved to {output_file}")
+    except Exception as e:
+        print(f"Error: {str(e)}")
