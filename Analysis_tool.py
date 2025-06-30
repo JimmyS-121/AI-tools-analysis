@@ -4,56 +4,47 @@ import seaborn as sns
 import plotly.express as px
 import streamlit as st
 import json
+import re
+from collections import Counter
+from wordcloud import WordCloud
 from datetime import datetime
 
-# Column mapping dictionary - maps possible column names to standard names
 COLUMN_MAPPING = {
-    # Timestamp
     'timestamp': ['timestamp', 'date', 'time', 'datetime'],
-    
-    # Department
     'department': ['department', 'dept', 'division', 'team'],
-    
-    # Job Role
     'job_role': ['job_role', 'role', 'position', 'job', 'job role'],
-    
-    # AI Tool
     'ai_tool': ['ai_tool_used', 'ai tool', 'tool', 'ai', 'ai tool used'],
-    
-    # Usage Frequency
     'usage_frequency': ['usage_frequency', 'frequency', 'usage', 'how often'],
-    
-    # Purpose
     'purpose': ['purpose', 'use case', 'application', 'used for'],
-    
-    # Ease of Use
     'ease_of_use': ['ease_of_use', 'ease', 'usability', 'ease of use'],
-    
-    # Time Saved
     'time_saved': ['time_saved', 'time', 'efficiency', 'time save', 'time saving'],
-    
-    # Suggestions
     'suggestions': ['improvement_suggestion', 'suggestions', 'feedback', 'comments']
 }
 
 def standardize_columns(df):
-    """Standardize column names using flexible mapping"""
-    # Create reverse mapping (variation -> standard name)
     reverse_mapping = {}
     for standard_name, variations in COLUMN_MAPPING.items():
         for variation in variations:
-            reverse_mapping[variation.lower().replace(' ', '_')] = standard_name
+            norm_variation = variation.lower().replace(' ', '_')
+            if not (standard_name == 'timestamp' and 'time_saved' in norm_variation):
+                reverse_mapping[norm_variation] = standard_name
     
-    # Normalize existing columns
     df.columns = [col.lower().strip().replace(' ', '_') for col in df.columns]
     
-    # Map to standard names
-    df.columns = [reverse_mapping.get(col, col) for col in df.columns]
+    new_columns = []
+    seen_columns = set()
+    for col in df.columns:
+        std_col = reverse_mapping.get(col, col)
+        if std_col in seen_columns:
+            new_columns.append(col)
+        else:
+            new_columns.append(std_col)
+            seen_columns.add(std_col)
     
+    df.columns = new_columns
     return df
 
 def load_data(uploaded_file):
-    """Load and standardize data from uploaded file"""
     if uploaded_file.name.endswith('.csv'):
         df = pd.read_csv(uploaded_file)
     elif uploaded_file.name.endswith('.json'):
@@ -66,12 +57,10 @@ def load_data(uploaded_file):
     return df
 
 def plot_usage_frequency(df):
-    """Plot usage frequency with flexible data handling"""
     if 'usage_frequency' not in df.columns:
         st.warning("No usage frequency data available")
         return None
     
-    # Normalize frequency values
     freq_map = {
         'daily': 'Daily',
         'weekly': 'Weekly',
@@ -95,12 +84,10 @@ def plot_usage_frequency(df):
     return fig
 
 def plot_tool_popularity(df):
-    """Plot AI tool popularity with flexible data handling"""
     if 'ai_tool' not in df.columns:
         st.warning("No AI tool data available")
         return None
     
-    # Clean tool names
     df['ai_tool'] = df['ai_tool'].str.strip().str.title()
     
     fig = px.pie(
@@ -111,19 +98,22 @@ def plot_tool_popularity(df):
     return fig
 
 def plot_metrics(df):
-    """Plot ease of use and time saved metrics"""
     figs = []
     
-    if 'ease_of_use' in df.columns:
+    ease_cols = [col for col in df.columns if 'ease_of_use' in col or 'ease' in col]
+    if ease_cols:
         fig1, ax1 = plt.subplots(figsize=(6, 4))
-        sns.histplot(df['ease_of_use'], bins=5, kde=True, ax=ax1)
+        sns.histplot(df[ease_cols[0]], bins=5, kde=True, ax=ax1)
         ax1.set_title('Ease of Use Ratings')
         ax1.set_xlabel('Rating (1-5)')
         figs.append(fig1)
     
-    if 'time_saved' in df.columns:
+    time_cols = [col for col in df.columns 
+                if ('time_saved' in col or 'time_saving' in col) 
+                and 'timestamp' not in col]
+    if time_cols:
         fig2, ax2 = plt.subplots(figsize=(6, 4))
-        sns.histplot(df['time_saved'], bins=5, kde=True, ax=ax2)
+        sns.histplot(df[time_cols[0]], bins=5, kde=True, ax=ax2)
         ax2.set_title('Time Saved Ratings')
         ax2.set_xlabel('Rating (1-5)')
         figs.append(fig2)
@@ -131,53 +121,46 @@ def plot_metrics(df):
     return figs if figs else None
 
 def analyze_suggestions(df):
-    """Analyze and visualize suggestions data"""
     if 'suggestions' not in df.columns:
         st.warning("No suggestions data available")
-        return None
+        return
     
-    # Clean and preprocess suggestions - ensure all values are strings
     suggestions = df['suggestions'].astype(str).dropna()
     if suggestions.empty:
         st.warning("No suggestions provided in the data")
-        return None
+        return
     
-    # Basic cleaning - handle NaN/None after string conversion
     cleaned_suggestions = suggestions.str.lower().str.strip()
     cleaned_suggestions = cleaned_suggestions.replace(
-        ['none', 'no', 'n/a', 'nothing', 'no suggestion', 'no improvements', 'nan', 'null'], 
-        'No suggestions', 
+        ['none', 'no', 'n/a', 'nothing', 'no suggestion', 'no improvements', 'nan', 'null'],
+        'No suggestions',
         regex=True
     )
     
-    # Categorize suggestions into broad groups with error handling
     categorized = []
     for suggestion in cleaned_suggestions:
         try:
             if suggestion == 'no suggestions':
                 categorized.append('No suggestions')
-            elif isinstance(suggestion, str) and re.search(r'train|guide|tutorial|documentation|help', suggestion):
+            elif re.search(r'train|guide|tutorial|documentation|help', suggestion):
                 categorized.append('More training/guidance')
-            elif isinstance(suggestion, str) and re.search(r'feature|function|capabilit|improve|enhance', suggestion):
+            elif re.search(r'feature|function|capabilit|improve|enhance', suggestion):
                 categorized.append('Feature improvements')
-            elif isinstance(suggestion, str) and re.search(r'integrat|connect|api|system', suggestion):
+            elif re.search(r'integrat|connect|api|system', suggestion):
                 categorized.append('Better integration')
-            elif isinstance(suggestion, str) and re.search(r'cost|price|license|subscription', suggestion):
+            elif re.search(r'cost|price|license|subscription', suggestion):
                 categorized.append('Cost reduction')
-            elif isinstance(suggestion, str) and re.search(r'reliable|accurate|quality|precise|correct', suggestion):
+            elif re.search(r'reliable|accurate|quality|precise|correct', suggestion):
                 categorized.append('Improved accuracy/reliability')
             else:
                 categorized.append('Other suggestions')
         except:
             categorized.append('Other suggestions')
     
-    # Count categories
     category_counts = pd.Series(categorized).value_counts(normalize=True) * 100
     
-    # Create visualizations
     st.subheader("Suggestions Analysis")
     
-    # Pie chart for categories
     col1, col2 = st.columns(2)
     with col1:
         if not category_counts.empty:
@@ -188,11 +171,10 @@ def analyze_suggestions(df):
             )
             st.plotly_chart(fig1)
     
-    # Word cloud for raw suggestions
     with col2:
         try:
             text = ' '.join(s for s in suggestions.dropna() if isinstance(s, str))
-            if text.strip():  # Only generate if we have text
+            if text.strip():
                 wordcloud = WordCloud(width=600, height=400, background_color='white').generate(text)
                 fig2, ax = plt.subplots(figsize=(10, 6))
                 ax.imshow(wordcloud, interpolation='bilinear')
@@ -204,7 +186,6 @@ def analyze_suggestions(df):
         except Exception as e:
             st.warning(f"Could not generate word cloud: {str(e)}")
     
-    # Display most common raw suggestions
     st.subheader("Most Common Suggestions")
     try:
         common_suggestions = Counter(s.capitalize() for s in suggestions.dropna() if isinstance(s, str)).most_common(10)
@@ -250,7 +231,6 @@ def create_dashboard():
                     with cols[i]:
                         st.pyplot(fig)
             
-            # Add suggestions analysis
             analyze_suggestions(df)
 
 if __name__ == '__main__':
