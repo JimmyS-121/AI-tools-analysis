@@ -7,7 +7,6 @@ import json
 import re
 from collections import Counter
 from wordcloud import WordCloud
-from datetime import datetime
 
 COLUMN_MAPPING = {
     'timestamp': ['timestamp', 'date', 'time', 'datetime'],
@@ -21,42 +20,57 @@ COLUMN_MAPPING = {
     'suggestions': ['improvement_suggestion', 'suggestions', 'feedback', 'comments']
 }
 
-def standardize_columns(df):
-    reverse_mapping = {}
-    for standard_name, variations in COLUMN_MAPPING.items():
-        for variation in variations:
-            norm_variation = variation.lower().replace(' ', '_')
-            if not (standard_name == 'timestamp' and 'time_saved' in norm_variation):
-                reverse_mapping[norm_variation] = standard_name
+def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    # Create mapping from variations to standard names
+    variation_map = {}
+    for std_name, variations in COLUMN_MAPPING.items():
+        for var in variations:
+            norm_var = var.lower().replace(' ', '_')
+            variation_map[norm_var] = std_name
     
+    # Normalize existing columns
     df.columns = [col.lower().strip().replace(' ', '_') for col in df.columns]
     
+    # Apply mapping with duplicate handling
     new_columns = []
     seen_columns = set()
+    
     for col in df.columns:
-        std_col = reverse_mapping.get(col, col)
+        std_col = variation_map.get(col, col)
+        
         if std_col in seen_columns:
-            new_columns.append(col)
+            # Handle duplicate standard columns
+            counter = 2
+            new_col = f"{std_col}_{counter}"
+            while new_col in seen_columns:
+                counter += 1
+                new_col = f"{std_col}_{counter}"
+            new_columns.append(new_col)
+            seen_columns.add(new_col)
         else:
             new_columns.append(std_col)
             seen_columns.add(std_col)
     
     df.columns = new_columns
-    return df
+    return df.loc[:, ~df.columns.duplicated()]
 
-def load_data(uploaded_file):
-    if uploaded_file.name.endswith('.csv'):
-        df = pd.read_csv(uploaded_file)
-    elif uploaded_file.name.endswith('.json'):
-        df = pd.read_json(uploaded_file)
-    else:
-        st.error("Unsupported file format")
+def load_data(uploaded_file) -> pd.DataFrame:
+    try:
+        if uploaded_file.name.endswith('.csv'):
+            df = pd.read_csv(uploaded_file)
+        elif uploaded_file.name.endswith('.json'):
+            df = pd.read_json(uploaded_file)
+        else:
+            st.error("Unsupported file format")
+            return None
+        
+        df = standardize_columns(df)
+        return df.loc[:, ~df.columns.duplicated()]
+    except Exception as e:
+        st.error(f"Error loading data: {str(e)}")
         return None
-    
-    df = standardize_columns(df)
-    return df
 
-def plot_usage_frequency(df):
+def plot_usage_frequency(df: pd.DataFrame):
     if 'usage_frequency' not in df.columns:
         st.warning("No usage frequency data available")
         return None
@@ -81,9 +95,10 @@ def plot_usage_frequency(df):
     ax.set_xlabel('Usage Frequency')
     ax.set_ylabel('Count')
     plt.tight_layout()
+    plt.close()
     return fig
 
-def plot_tool_popularity(df):
+def plot_tool_popularity(df: pd.DataFrame):
     if 'ai_tool' not in df.columns:
         st.warning("No AI tool data available")
         return None
@@ -97,10 +112,14 @@ def plot_tool_popularity(df):
     )
     return fig
 
-def plot_metrics(df):
+def plot_metrics(df: pd.DataFrame):
     figs = []
     
-    ease_cols = [col for col in df.columns if 'ease_of_use' in col or 'ease' in col]
+    # Find all columns that might contain ease of use data
+    ease_cols = [col for col in df.columns 
+                if ('ease_of_use' in col or 'ease' in col) 
+                and 'timestamp' not in col]
+    
     if ease_cols:
         fig1, ax1 = plt.subplots(figsize=(6, 4))
         sns.histplot(df[ease_cols[0]], bins=5, kde=True, ax=ax1)
@@ -108,9 +127,11 @@ def plot_metrics(df):
         ax1.set_xlabel('Rating (1-5)')
         figs.append(fig1)
     
+    # Find all columns that might contain time saved data
     time_cols = [col for col in df.columns 
                 if ('time_saved' in col or 'time_saving' in col) 
                 and 'timestamp' not in col]
+    
     if time_cols:
         fig2, ax2 = plt.subplots(figsize=(6, 4))
         sns.histplot(df[time_cols[0]], bins=5, kde=True, ax=ax2)
@@ -118,9 +139,10 @@ def plot_metrics(df):
         ax2.set_xlabel('Rating (1-5)')
         figs.append(fig2)
     
+    plt.close('all')
     return figs if figs else None
 
-def analyze_suggestions(df):
+def analyze_suggestions(df: pd.DataFrame):
     if 'suggestions' not in df.columns:
         st.warning("No suggestions data available")
         return
