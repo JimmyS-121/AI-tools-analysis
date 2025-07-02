@@ -56,13 +56,14 @@ def plot_usage_frequency(df):
     # Get counts and ensure all categories are represented
     counts = df['usage_frequency'].value_counts().reindex(categories, fill_value=0)
     
-    # Create plot
+    # Create plot with hue parameter to address warning
     sns.barplot(
         x=counts.index,
         y=counts.values,
-        order=categories,
+        hue=counts.index,  # Added to address warning
         palette='viridis',
-        ax=ax
+        ax=ax,
+        legend=False  # Added to address warning
     )
     
     # Customize plot
@@ -114,68 +115,79 @@ def plot_tool_popularity(df):
 
 def plot_department_usage(df):
     """Visualize usage by department"""
-    if 'department' not in df.columns:
-        return None
+    try:
+        if 'department' not in df.columns:
+            return None
+            
+        # Define expected categories
+        categories = ['Daily', 'Weekly', 'Monthly', 'Rarely', 'Never']
         
-    # Define expected categories
-    categories = ['Daily', 'Weekly', 'Monthly', 'Rarely', 'Never']
-    
-    # Create cross-tab of department vs usage frequency
-    cross_tab = pd.crosstab(
-        index=df['department'],
-        columns=df['usage_frequency'],
-        normalize='index'
-    ).fillna(0)
-    
-    # Ensure all categories are present (add missing ones with 0 values)
-    for cat in categories:
-        if cat not in cross_tab.columns:
-            cross_tab[cat] = 0
-    
-    # Reorder columns
-    cross_tab = cross_tab[categories]
-    
-    # Create plot
-    fig, ax = plt.subplots(figsize=(12, 6))
-    cross_tab.plot(kind='bar', stacked=True, ax=ax, colormap='viridis')
-    
-    # Customize plot
-    ax.set_title('AI Usage Frequency by Department', pad=20)
-    ax.set_xlabel('Department')
-    ax.set_ylabel('Percentage of Respondents')
-    ax.legend(title='Usage Frequency', bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    
-    return fig
+        # Create cross-tab of department vs usage frequency
+        cross_tab = pd.crosstab(
+            index=df['department'],
+            columns=df['usage_frequency'],
+            normalize='index'
+        ).fillna(0)
+        
+        # Ensure all categories are present (add missing ones with 0 values)
+        for cat in categories:
+            if cat not in cross_tab.columns:
+                cross_tab[cat] = 0
+        
+        # Only reorder with columns that exist
+        existing_cols = [col for col in categories if col in cross_tab.columns]
+        cross_tab = cross_tab[existing_cols]
+        
+        # Create plot
+        fig, ax = plt.subplots(figsize=(12, 6))
+        cross_tab.plot(kind='bar', stacked=True, ax=ax, colormap='viridis')
+        
+        # Customize plot
+        ax.set_title('AI Usage Frequency by Department', pad=20)
+        ax.set_xlabel('Department')
+        ax.set_ylabel('Percentage of Respondents')
+        ax.legend(title='Usage Frequency', bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        
+        return fig
+        
+    except Exception as e:
+        st.error(f"Error generating department usage plot: {str(e)}")
+        return None
 
 def plot_suggestions_wordcloud(df):
     """Generate word cloud from suggestions"""
-    if 'suggestions' not in df.columns:
-        return None
+    try:
+        if 'suggestions' not in df.columns:
+            return None
+            
+        # Combine all suggestions
+        text = ' '.join(df['suggestions'].dropna().astype(str))
         
-    # Combine all suggestions
-    text = ' '.join(df['suggestions'].dropna().astype(str))
-    
-    if not text.strip():
+        if not text.strip():
+            return None
+        
+        # Generate word cloud
+        wordcloud = WordCloud(
+            width=800,
+            height=400,
+            background_color='white',
+            colormap='viridis',
+            max_words=50
+        ).generate(text)
+        
+        # Create plot
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.imshow(wordcloud, interpolation='bilinear')
+        ax.axis('off')
+        ax.set_title('Common Words in Suggestions', pad=20)
+        
+        return fig
+        
+    except Exception as e:
+        st.error(f"Error generating word cloud: {str(e)}")
         return None
-    
-    # Generate word cloud
-    wordcloud = WordCloud(
-        width=800,
-        height=400,
-        background_color='white',
-        colormap='viridis',
-        max_words=50
-    ).generate(text)
-    
-    # Create plot
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.imshow(wordcloud, interpolation='bilinear')
-    ax.axis('off')
-    ax.set_title('Common Words in Suggestions', pad=20)
-    
-    return fig
 
 def show_data_summary(df):
     """Display key data metrics"""
