@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
 import streamlit as st
+from wordcloud import WordCloud
+from collections import Counter
 
 # Expected column names (must match data cleaner output)
 EXPECTED_COLUMNS = {
@@ -110,6 +112,64 @@ def plot_tool_popularity(df):
     
     return fig
 
+def plot_department_usage(df):
+    """Visualize usage by department"""
+    if 'department' not in df.columns:
+        return None
+        
+    # Create cross-tab of department vs usage frequency
+    cross_tab = pd.crosstab(
+        index=df['department'],
+        columns=df['usage_frequency'],
+        normalize='index'
+    ).fillna(0)
+    
+    # Reorder columns
+    order = ['Daily', 'Weekly', 'Monthly', 'Rarely', 'Never']
+    cross_tab = cross_tab[order]
+    
+    # Create plot
+    fig, ax = plt.subplots(figsize=(12, 6))
+    cross_tab.plot(kind='bar', stacked=True, ax=ax, colormap='viridis')
+    
+    # Customize plot
+    ax.set_title('AI Usage Frequency by Department', pad=20)
+    ax.set_xlabel('Department')
+    ax.set_ylabel('Percentage of Respondents')
+    ax.legend(title='Usage Frequency', bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    
+    return fig
+
+def plot_suggestions_wordcloud(df):
+    """Generate word cloud from suggestions"""
+    if 'suggestions' not in df.columns:
+        return None
+        
+    # Combine all suggestions
+    text = ' '.join(df['suggestions'].dropna().astype(str))
+    
+    if not text.strip():
+        return None
+    
+    # Generate word cloud
+    wordcloud = WordCloud(
+        width=800,
+        height=400,
+        background_color='white',
+        colormap='viridis',
+        max_words=50
+    ).generate(text)
+    
+    # Create plot
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.imshow(wordcloud, interpolation='bilinear')
+    ax.axis('off')
+    ax.set_title('Common Words in Suggestions', pad=20)
+    
+    return fig
+
 def show_data_summary(df):
     """Display key data metrics"""
     st.subheader("📊 Data Summary")
@@ -166,6 +226,20 @@ def create_dashboard():
             with col2:
                 st.plotly_chart(plot_tool_popularity(df), use_container_width=True)
             
+            # Department breakdown
+            dept_fig = plot_department_usage(df)
+            if dept_fig:
+                st.subheader("Department-wise Usage Patterns")
+                st.pyplot(dept_fig)
+            
+            # Suggestions analysis
+            st.subheader("User Suggestions Analysis")
+            suggestions_fig = plot_suggestions_wordcloud(df)
+            if suggestions_fig:
+                st.pyplot(suggestions_fig)
+            else:
+                st.info("No suggestions data available for analysis")
+            
             # Data download
             st.subheader("Download Processed Data")
             csv = df.to_csv(index=False).encode('utf-8')
@@ -178,4 +252,3 @@ def create_dashboard():
 
 if __name__ == '__main__':
     create_dashboard()
-        
