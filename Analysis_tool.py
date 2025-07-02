@@ -48,127 +48,167 @@ def load_data(uploaded_file):
 
 def plot_usage_frequency(df):
     """Visualize usage frequency data"""
-    fig, ax = plt.subplots(figsize=(10, 6))
-    
-    # Order categories logically
-    order = ['Daily', 'Weekly', 'Monthly', 'Rarely', 'Never']
-    
-    # Get counts and ensure all categories are represented
-    counts = df['usage_frequency'].value_counts().reindex(order, fill_value=0)
-    
-    # Create plot
-    sns.barplot(
-        x=counts.index,
-        y=counts.values,
-        order=order,
-        palette='viridis',
-        ax=ax
-    )
-    
-    # Customize plot
-    ax.set_title('AI Tools Usage Frequency', pad=20)
-    ax.set_xlabel('Frequency')
-    ax.set_ylabel('Number of Respondents')
-    plt.xticks(rotation=45)
-    
-    # Add value labels
-    for p in ax.patches:
-        ax.annotate(
-            f"{int(p.get_height())}",
-            (p.get_x() + p.get_width() / 2., p.get_height()),
-            ha='center',
-            va='center',
-            xytext=(0, 5),
-            textcoords='offset points'
+    try:
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        # Get all unique values in the column
+        unique_values = df['usage_frequency'].unique()
+        
+        # Define preferred order, but only include values that exist in the data
+        preferred_order = ['Daily', 'Weekly', 'Monthly', 'Rarely', 'Never']
+        order = [val for val in preferred_order if val in unique_values]
+        
+        # If no preferred values exist, use natural order
+        if not order:
+            order = sorted(unique_values)
+        
+        # Get counts and ensure all categories are represented
+        counts = df['usage_frequency'].value_counts().reindex(order, fill_value=0)
+        
+        # Create plot
+        sns.barplot(
+            x=counts.index,
+            y=counts.values,
+            order=order,
+            palette='viridis',
+            ax=ax
         )
+        
+        # Customize plot
+        ax.set_title('AI Tools Usage Frequency', pad=20)
+        ax.set_xlabel('Frequency')
+        ax.set_ylabel('Number of Respondents')
+        plt.xticks(rotation=45)
+        
+        # Add value labels
+        for p in ax.patches:
+            ax.annotate(
+                f"{int(p.get_height())}",
+                (p.get_x() + p.get_width() / 2., p.get_height()),
+                ha='center',
+                va='center',
+                xytext=(0, 5),
+                textcoords='offset points'
+            )
+        
+        plt.tight_layout()
+        return fig
     
-    plt.tight_layout()
-    return fig
+    except Exception as e:
+        st.error(f"Error generating usage frequency plot: {str(e)}")
+        return None
 
 def plot_tool_popularity(df):
     """Visualize AI tool popularity"""
-    # Get tool counts
-    tool_counts = df['ai_tool'].value_counts().reset_index()
-    tool_counts.columns = ['AI Tool', 'Count']
+    try:
+        # Get tool counts
+        tool_counts = df['ai_tool'].value_counts().reset_index()
+        tool_counts.columns = ['AI Tool', 'Count']
+        
+        # Create interactive plot
+        fig = px.bar(
+            tool_counts,
+            x='AI Tool',
+            y='Count',
+            title='AI Tool Popularity',
+            color='AI Tool',
+            text='Count'
+        )
+        
+        # Customize plot
+        fig.update_traces(textposition='outside')
+        fig.update_layout(
+            showlegend=False,
+            xaxis_tickangle=-45,
+            height=600,
+            margin=dict(t=60)
+        )
+        
+        return fig
     
-    # Create interactive plot
-    fig = px.bar(
-        tool_counts,
-        x='AI Tool',
-        y='Count',
-        title='AI Tool Popularity',
-        color='AI Tool',
-        text='Count'
-    )
-    
-    # Customize plot
-    fig.update_traces(textposition='outside')
-    fig.update_layout(
-        showlegend=False,
-        xaxis_tickangle=-45,
-        height=600,
-        margin=dict(t=60)
-    )
-    
-    return fig
+    except Exception as e:
+        st.error(f"Error generating tool popularity plot: {str(e)}")
+        return None
 
 def plot_department_usage(df):
     """Visualize usage by department"""
-    if 'department' not in df.columns:
-        return None
+    try:
+        if 'department' not in df.columns or 'usage_frequency' not in df.columns:
+            return None
+            
+        # Get all unique values in usage_frequency
+        unique_freq = df['usage_frequency'].unique()
         
-    # Create cross-tab of department vs usage frequency
-    cross_tab = pd.crosstab(
-        index=df['department'],
-        columns=df['usage_frequency'],
-        normalize='index'
-    ).fillna(0)
+        # Define preferred order, but only include values that exist in the data
+        preferred_order = ['Daily', 'Weekly', 'Monthly', 'Rarely', 'Never']
+        order = [val for val in preferred_order if val in unique_freq]
+        
+        # If no preferred values exist, use natural order
+        if not order:
+            order = sorted(unique_freq)
+        
+        # Create cross-tab of department vs usage frequency
+        cross_tab = pd.crosstab(
+            index=df['department'],
+            columns=df['usage_frequency'],
+            normalize='index'
+        ).fillna(0)
+        
+        # Only include columns that exist in the data
+        existing_cols = [col for col in order if col in cross_tab.columns]
+        if existing_cols:
+            cross_tab = cross_tab[existing_cols]
+        
+        # Create plot
+        fig, ax = plt.subplots(figsize=(12, 6))
+        cross_tab.plot(kind='bar', stacked=True, ax=ax, colormap='viridis')
+        
+        # Customize plot
+        ax.set_title('AI Usage Frequency by Department', pad=20)
+        ax.set_xlabel('Department')
+        ax.set_ylabel('Percentage of Respondents')
+        ax.legend(title='Usage Frequency', bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        
+        return fig
     
-    # Reorder columns
-    order = ['Daily', 'Weekly', 'Monthly', 'Rarely', 'Never']
-    cross_tab = cross_tab[order]
-    
-    # Create plot
-    fig, ax = plt.subplots(figsize=(12, 6))
-    cross_tab.plot(kind='bar', stacked=True, ax=ax, colormap='viridis')
-    
-    # Customize plot
-    ax.set_title('AI Usage Frequency by Department', pad=20)
-    ax.set_xlabel('Department')
-    ax.set_ylabel('Percentage of Respondents')
-    ax.legend(title='Usage Frequency', bbox_to_anchor=(1.05, 1), loc='upper left')
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    
-    return fig
+    except Exception as e:
+        st.error(f"Error generating department usage plot: {str(e)}")
+        return None
 
 def plot_suggestions_wordcloud(df):
     """Generate word cloud from suggestions"""
-    if 'suggestions' not in df.columns:
-        return None
+    try:
+        if 'suggestions' not in df.columns:
+            return None
+            
+        # Combine all suggestions
+        text = ' '.join(df['suggestions'].dropna().astype(str))
         
-    # Combine all suggestions
-    text = ' '.join(df['suggestions'].dropna().astype(str))
+        if not text.strip():
+            return None
+        
+        # Generate word cloud
+        wordcloud = WordCloud(
+            width=800,
+            height=400,
+            background_color='white',
+            colormap='viridis',
+            max_words=50
+        ).generate(text)
+        
+        # Create plot
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.imshow(wordcloud, interpolation='bilinear')
+        ax.axis('off')
+        ax.set_title('Common Words in Suggestions', pad=20)
+        
+        return fig
     
-    if not text.strip():
+    except Exception as e:
+        st.error(f"Error generating word cloud: {str(e)}")
         return None
-    
-    # Generate word cloud
-    wordcloud = WordCloud(
-        width=800,
-        height=400,
-        background_color='white',
-        colormap='viridis',
-        max_words=50
-    ).generate(text)
-    
-    # Create plot
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.imshow(wordcloud, interpolation='bilinear')
-    ax.axis('off')
-    ax.set_title('Common Words in Suggestions', pad=20)
-    
-    return fig
 
 def show_data_summary(df):
     """Display key data metrics"""
