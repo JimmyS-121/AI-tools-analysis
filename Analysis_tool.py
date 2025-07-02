@@ -33,6 +33,24 @@ def load_data(uploaded_file):
         else:
             st.error("Unsupported file format. Please upload CSV or Excel.")
             return None
+        
+        # Validate columns and data types
+        for col, dtype in EXPECTED_COLUMNS.items():
+            if col not in df.columns:
+                st.error(f"Missing expected column: {col}")
+                return None
+            if not pd.api.types.is_dtype_equal(df[col].dtype, dtype):
+                try:
+                    df[col] = df[col].astype(dtype)
+                except (ValueError, TypeError):
+                    st.error(f"Could not convert column '{col}' to expected type {dtype}")
+                    return None
+        
+        return df
+    
+    except Exception as e:
+        st.error(f"Error loading data: {str(e)}")
+        return None
 
 def plot_usage_frequency(df):
     """Visualize usage frequency data"""
