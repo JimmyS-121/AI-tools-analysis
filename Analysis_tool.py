@@ -25,26 +25,14 @@ def load_data(uploaded_file):
         if uploaded_file.name.endswith('.csv'):
             df = pd.read_csv(uploaded_file)
         elif uploaded_file.name.endswith(('.xls', '.xlsx')):
-            df = pd.read_excel(uploaded_file)
+            try:
+                df = pd.read_excel(uploaded_file)
+            except ImportError:
+                st.error("Excel support requires openpyxl. Please install with: pip install openpyxl")
+                return None
         else:
             st.error("Unsupported file format. Please upload CSV or Excel.")
             return None
-
-        if df.empty:
-            st.error("Uploaded file is empty")
-            return None
-
-        # Validate columns
-        missing_cols = [col for col in EXPECTED_COLUMNS if col not in df.columns]
-        if missing_cols:
-            st.error(f"Missing required columns: {', '.join(missing_cols)}")
-            return None
-
-        return df
-
-    except Exception as e:
-        st.error(f"Error loading file: {str(e)}")
-        return None
 
 def plot_usage_frequency(df):
     """Visualize usage frequency data"""
